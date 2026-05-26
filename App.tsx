@@ -22,6 +22,7 @@ import {WebView} from 'react-native-webview';
 import type {WebViewNavigation} from 'react-native-webview';
 import type {WebViewErrorEvent} from 'react-native-webview/lib/WebViewTypes';
 import Icon from 'react-native-vector-icons/Feather';
+import BootSplash from 'react-native-bootsplash';
 
 const BASE_URL = 'https://dev-arvelli-fe.oh0rvq.easypanel.host';
 
@@ -188,6 +189,7 @@ function AppContent() {
             if (isOffline) {
               setIsOffline(false);
             }
+            BootSplash.hide({fade: true});
           }}
           renderError={() => <View />}
           sharedCookiesEnabled={true}
