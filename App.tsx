@@ -83,8 +83,7 @@ function AppContent() {
     () =>
       StyleSheet.create({
         tabBarSafeArea: {
-          paddingBottom:
-            Platform.OS === 'ios' ? Math.max(insets.bottom, 6) : 6,
+          paddingBottom: Math.max(insets.bottom, 6),
         },
       }).tabBarSafeArea,
     [insets.bottom],
