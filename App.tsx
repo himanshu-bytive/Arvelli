@@ -129,6 +129,10 @@ function AppContent() {
         webViewRef.current?.injectJavaScript(
           `window.location.href = '${targetUrl}'; true;`,
         );
+      } else {
+        webViewRef.current?.injectJavaScript(
+          `window.scrollTo({top: 0, behavior: 'smooth'}); true;`,
+        );
       }
       setActiveTab(tab.key);
     },
