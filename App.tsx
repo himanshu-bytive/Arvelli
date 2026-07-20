@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   BackHandler,
   Platform,
+  Linking,
 } from 'react-native';
 import {
   SafeAreaProvider,
@@ -45,6 +46,16 @@ const DISABLE_ZOOM_JS = `
   }
   meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
   document.addEventListener('gesturestart', function(e) { e.preventDefault(); });
+
+  document.addEventListener('click', function(e) {
+    var el = e.target;
+    while (el && el.tagName !== 'A') { el = el.parentElement; }
+    if (el && el.href && (el.href.startsWith('mailto:') || el.href.startsWith('tel:'))) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.ReactNativeWebView.postMessage(JSON.stringify({type: 'openURL', url: el.href}));
+    }
+  }, true);
   true;
 `;
 
@@ -215,6 +226,29 @@ function AppContent() {
           bounces={true}
           overScrollMode="always"
           applicationNameForUserAgent="ArvelliApp/1.0"
+          originWhitelist={['http://*', 'https://*', 'mailto:*', 'tel:*', 'sms:*']}
+          onMessage={event => {
+            try {
+              const data = JSON.parse(event.nativeEvent.data);
+              if (data.type === 'openURL' && data.url) {
+                Linking.openURL(data.url).catch(() => {});
+              }
+            } catch {}
+          }}
+          onShouldStartLoadWithRequest={request => {
+            const {url} = request;
+            if (
+              url.startsWith('mailto:') ||
+              url.startsWith('tel:') ||
+              url.startsWith('sms:') ||
+              url.startsWith('whatsapp:') ||
+              url.startsWith('intent:')
+            ) {
+              Linking.openURL(url).catch(() => {});
+              return false;
+            }
+            return true;
+          }}
         />
         {isOffline && (
           <View style={styles.offlineContainer}>
