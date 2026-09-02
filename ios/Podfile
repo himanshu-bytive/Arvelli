@@ -30,5 +30,40 @@ target 'arvelli' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    installer.aggregate_targets.each do |target|
+      target.xcconfigs.each do |variant, _xcconfig|
+        xcconfig_path = target.client_root + target.xcconfig_relative_path(variant)
+        content = File.read(xcconfig_path)
+
+        # Fix 1: RCTSwiftUI.modulemap not found during archive (RN 0.76+).
+        # PODS_CONFIGURATION_BUILD_DIR resolves inside ArchiveIntermediates during archive,
+        # so the map isn't there yet. Redirect to the static copy under PODS_ROOT.
+        content = content.gsub(
+          '"${PODS_CONFIGURATION_BUILD_DIR}/RCTSwiftUI/RCTSwiftUI.modulemap"',
+          '"${PODS_ROOT}/Headers/Public/RCTSwiftUI/RCTSwiftUI.modulemap"'
+        )
+
+        # Fix 2: "No such module 'React'" during archive (RN 0.76+).
+        # The [CP] Copy XCFrameworks script (in the pod target) extracts React.framework
+        # to PODS_XCFRAMEWORKS_BUILD_DIR, but Xcode may compile the main app before that
+        # extraction finishes. Add the static xcframework slice paths directly so the Swift
+        # compiler can find React.framework and ReactNativeDependencies.framework without
+        # waiting for the extraction step.
+        # ios-arm64 = device/archive; ios-arm64_x86_64-simulator = simulator.
+        extra_paths = [
+          '"${PODS_ROOT}/React-Core-prebuilt/React.xcframework/ios-arm64"',
+          '"${PODS_ROOT}/React-Core-prebuilt/React.xcframework/ios-arm64_x86_64-simulator"',
+          '"${PODS_ROOT}/ReactNativeDependencies/framework/packages/react-native/ReactNativeDependencies.xcframework/ios-arm64"',
+          '"${PODS_ROOT}/ReactNativeDependencies/framework/packages/react-native/ReactNativeDependencies.xcframework/ios-arm64_x86_64-simulator"',
+        ]
+        if content =~ /^FRAMEWORK_SEARCH_PATHS = /
+          extra = extra_paths.join(' ')
+          content = content.gsub(/^(FRAMEWORK_SEARCH_PATHS = .*)$/, "\\1 #{extra}")
+        end
+
+        File.write(xcconfig_path, content)
+      end
+    end
   end
 end
