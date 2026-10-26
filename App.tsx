@@ -223,6 +223,9 @@ function AppContent() {
           pullToRefreshEnabled={true}
           allowFileAccess={true}
           setSupportMultipleWindows={false}
+          onOpenWindow={e => {
+            Linking.openURL(e.nativeEvent.targetUrl).catch(() => {});
+          }}
           bounces={true}
           overScrollMode="always"
           applicationNameForUserAgent="ArvelliApp/1.0"
@@ -230,7 +233,7 @@ function AppContent() {
           onMessage={event => {
             try {
               const data = JSON.parse(event.nativeEvent.data);
-              if (data.type === 'openURL' && data.url) {
+              if ((data.type === 'openURL' || data.type === 'OPEN_URL') && data.url) {
                 Linking.openURL(data.url).catch(() => {});
               }
             } catch {}
@@ -242,7 +245,8 @@ function AppContent() {
               url.startsWith('tel:') ||
               url.startsWith('sms:') ||
               url.startsWith('whatsapp:') ||
-              url.startsWith('intent:')
+              url.startsWith('intent:') ||
+              /^https?:\/\/(wa\.me|api\.whatsapp\.com|web\.whatsapp\.com|t\.me|telegram\.me)\//.test(url)
             ) {
               Linking.openURL(url).catch(() => {});
               return false;
