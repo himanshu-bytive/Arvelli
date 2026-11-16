@@ -25,11 +25,11 @@ import type {WebViewErrorEvent} from 'react-native-webview/lib/WebViewTypes';
 import Icon from 'react-native-vector-icons/Feather';
 import BootSplash from 'react-native-bootsplash';
 
-const BASE_URL = 'https://stagging-arvelli-fe.oh0rvq.easypanel.host';
+const BASE_URL = 'https://arvelli.in';
 
 const TABS = [
   {key: 'home', label: 'Home', path: '/', icon: 'home'},
-  {key: 'categories', label: 'Categories', path: '/jewellery', icon: 'grid'},
+  {key: 'categories', label: 'Categories', path: '/categories', icon: 'grid'},
   {key: 'wishlist', label: 'Wishlist', path: '/wishlist', icon: 'heart'},
   {key: 'cart', label: 'Cart', path: '/checkout/cart', icon: 'shopping-bag'},
   {key: 'account', label: 'Account', path: '/account', icon: 'user'},
@@ -65,7 +65,7 @@ function getActiveTab(url: string): TabKey {
   if (path.startsWith('/wishlist')) {return 'wishlist';}
   if (path.startsWith('/checkout/cart')) {return 'cart';}
   if (path.startsWith('/account') || path.startsWith('/my-account') || path.startsWith('/profile')) {return 'account';}
-  if (path.startsWith('/jewellery') || path.startsWith('/gold') || path.startsWith('/diamond') || path.startsWith('/silver')) {return 'categories';}
+  if (path.startsWith('/categories') || path.startsWith('/jewellery') || path.startsWith('/gold') || path.startsWith('/diamond') || path.startsWith('/silver')) {return 'categories';}
   if (path === '/' || path === '') {return 'home';}
   return 'home';
 }
