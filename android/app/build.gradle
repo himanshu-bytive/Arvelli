@@ -78,6 +78,16 @@ def keystoreProperties = new Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
+// Signing values come from keystore.properties, or from gradle.properties
+// (prefer ~/.gradle/gradle.properties so passwords never get committed).
+def signingProp = { String key ->
+    keystoreProperties[key] ?: (project.hasProperty(key) ? project.property(key) : null)
+}
+def hasReleaseSigning = ['ARVELLI_RELEASE_STORE_FILE', 'ARVELLI_RELEASE_STORE_PASSWORD',
+                         'ARVELLI_RELEASE_KEY_ALIAS', 'ARVELLI_RELEASE_KEY_PASSWORD'].every { signingProp(it) }
+if (!hasReleaseSigning && gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }) {
+    throw new GradleException("Release signing not configured: set ARVELLI_RELEASE_* in ~/.gradle/gradle.properties or android/keystore.properties")
+}
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -89,8 +99,8 @@ android {
         applicationId "com.arvelli"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 14
-        versionName "1.4"
+        versionCode 20
+        versionName "1.6"
     }
     signingConfigs {
         debug {
@@ -99,12 +109,12 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
-        if (keystorePropertiesFile.exists()) {
+        if (hasReleaseSigning) {
             release {
-                storeFile file(keystoreProperties['ARVELLI_RELEASE_STORE_FILE'])
-                storePassword keystoreProperties['ARVELLI_RELEASE_STORE_PASSWORD']
-                keyAlias keystoreProperties['ARVELLI_RELEASE_KEY_ALIAS']
-                keyPassword keystoreProperties['ARVELLI_RELEASE_KEY_PASSWORD']
+                storeFile file(signingProp('ARVELLI_RELEASE_STORE_FILE'))
+                storePassword signingProp('ARVELLI_RELEASE_STORE_PASSWORD')
+                keyAlias signingProp('ARVELLI_RELEASE_KEY_ALIAS')
+                keyPassword signingProp('ARVELLI_RELEASE_KEY_PASSWORD')
             }
         }
     }
@@ -113,9 +123,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig keystorePropertiesFile.exists()
-                ? signingConfigs.release
-                : signingConfigs.debug
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
