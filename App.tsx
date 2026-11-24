@@ -13,6 +13,8 @@ import {
   BackHandler,
   Platform,
   Linking,
+  NativeModules,
+  NativeEventEmitter,
 } from 'react-native';
 import {
   SafeAreaProvider,
@@ -26,6 +28,72 @@ import Icon from 'react-native-vector-icons/Feather';
 import BootSplash from 'react-native-bootsplash';
 
 const BASE_URL = 'https://arvelli.in';
+
+const {ArvelliNative} = NativeModules;
+
+const WHATSAPP_URL_RE =
+  /^(whatsapp:|https?:\/\/(wa\.me|api\.whatsapp\.com)\/)/i;
+
+// Android: opens WhatsApp links via a chooser so the user can pick between
+// WhatsApp and WhatsApp Business instead of the OS silently picking one.
+function openExternalUrl(url: string) {
+  if (
+    Platform.OS === 'android' &&
+    ArvelliNative?.openWhatsApp &&
+    WHATSAPP_URL_RE.test(url)
+  ) {
+    ArvelliNative.openWhatsApp(url, 'Share via')
+      .then((opened: boolean) => {
+        if (!opened) {
+          Linking.openURL(url).catch(() => {});
+        }
+      })
+      .catch(() => Linking.openURL(url).catch(() => {}));
+    return;
+  }
+  Linking.openURL(url).catch(() => {});
+}
+
+// Notifies the app when the site requests an OTP (so Android can start the
+// SMS User Consent listener before the SMS arrives), and makes sure OTP inputs
+// carry autocomplete="one-time-code" so iOS offers the code from Messages.
+const OTP_BRIDGE_JS = `
+  (function() {
+    if (window.__arvelliOtpBridge) { return; }
+    window.__arvelliOtpBridge = true;
+    var OTP_SEND_RE = /\\/user\\/(check-user|signup-user|resent-otp)/i;
+    function notify() {
+      try {
+        window.ReactNativeWebView.postMessage(JSON.stringify({type: 'OTP_REQUESTED'}));
+      } catch (e) {}
+    }
+    var origFetch = window.fetch;
+    if (origFetch) {
+      window.fetch = function(input, init) {
+        try {
+          var url = typeof input === 'string' ? input : (input && input.url) || '';
+          if (OTP_SEND_RE.test(url)) { notify(); }
+        } catch (e) {}
+        return origFetch.apply(this, arguments);
+      };
+    }
+    var origOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url) {
+      try { if (OTP_SEND_RE.test(String(url))) { notify(); } } catch (e) {}
+      return origOpen.apply(this, arguments);
+    };
+    function tagOtpInputs() {
+      var inputs = document.querySelectorAll('input[autocomplete="one-time-code"], .mantine-PinInput-input, input[data-otp]');
+      for (var i = 0; i < inputs.length; i++) {
+        inputs[i].setAttribute('autocomplete', 'one-time-code');
+        inputs[i].setAttribute('inputmode', 'numeric');
+      }
+    }
+    new MutationObserver(tagOtpInputs).observe(document.documentElement, {childList: true, subtree: true});
+    tagOtpInputs();
+  })();
+  true;
+`;
 
 const TABS = [
   {key: 'home', label: 'Home', path: '/', icon: 'home'},
@@ -46,6 +114,7 @@ const DISABLE_ZOOM_JS = `
   }
   meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
   document.addEventListener('gesturestart', function(e) { e.preventDefault(); });
+  ${OTP_BRIDGE_JS}
 
   document.addEventListener('click', function(e) {
     var el = e.target;
@@ -173,6 +242,33 @@ function AppContent() {
     webViewRef.current?.reload();
   }, []);
 
+  // Android: OTP read via SMS User Consent API, pushed into the page as the
+  // OTP_AUTOFILL message the website already listens for.
+  React.useEffect(() => {
+    if (Platform.OS !== 'android' || !ArvelliNative) {
+      return;
+    }
+    const emitter = new NativeEventEmitter(ArvelliNative);
+    const sub = emitter.addListener('onOtpReceived', (e: {code?: string}) => {
+      const code = String(e?.code ?? '').replace(/\D/g, '');
+      if (!code) {
+        return;
+      }
+      const payload = JSON.stringify(JSON.stringify({type: 'OTP_AUTOFILL', code}));
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          var data = ${payload};
+          window.dispatchEvent(new MessageEvent('message', {data: data}));
+        })();
+        true;
+      `);
+    });
+    return () => {
+      sub.remove();
+      ArvelliNative.stopOtpListener?.();
+    };
+  }, []);
+
   React.useEffect(() => {
     if (Platform.OS !== 'android') {
       return;
@@ -224,7 +320,7 @@ function AppContent() {
           allowFileAccess={true}
           setSupportMultipleWindows={false}
           onOpenWindow={e => {
-            Linking.openURL(e.nativeEvent.targetUrl).catch(() => {});
+            openExternalUrl(e.nativeEvent.targetUrl);
           }}
           bounces={true}
           overScrollMode="always"
@@ -234,7 +330,9 @@ function AppContent() {
             try {
               const data = JSON.parse(event.nativeEvent.data);
               if ((data.type === 'openURL' || data.type === 'OPEN_URL') && data.url) {
-                Linking.openURL(data.url).catch(() => {});
+                openExternalUrl(data.url);
+              } else if (data.type === 'OTP_REQUESTED' && Platform.OS === 'android') {
+                ArvelliNative?.startOtpListener?.().catch(() => {});
               }
             } catch {}
           }}
@@ -248,7 +346,7 @@ function AppContent() {
               url.startsWith('intent:') ||
               /^https?:\/\/(wa\.me|api\.whatsapp\.com|web\.whatsapp\.com|t\.me|telegram\.me)\//.test(url)
             ) {
-              Linking.openURL(url).catch(() => {});
+              openExternalUrl(url);
               return false;
             }
             return true;
